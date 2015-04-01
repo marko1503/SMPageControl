@@ -51,10 +51,11 @@ static SMPageControlStyleDefaults _defaultStyleForSystemVersion;
 @implementation SMPageControl
 {
 @private
-    NSInteger			_displayedPage;
-	CGFloat				_measuredIndicatorWidth;
-	CGFloat				_measuredIndicatorHeight;
-	CGImageRef			_pageImageMask;
+    NSInteger           __displayedNumberOfPages;
+    NSInteger			__displayedPage;
+	CGFloat				__measuredIndicatorWidth;
+	CGFloat				__measuredIndicatorHeight;
+	CGImageRef			__pageImageMask;
 }
 
 @synthesize pageNames = _pageNames;
@@ -76,6 +77,7 @@ static SMPageControlStyleDefaults _defaultStyleForSystemVersion;
 
 - (void)_initialize
 {
+    __displayedNumberOfPages = 0;
 	_numberOfPages = 0;
 	_tapBehavior = SMPageControlTapBehaviorStep;
     
@@ -122,8 +124,8 @@ static SMPageControlStyleDefaults _defaultStyleForSystemVersion;
 
 - (void)dealloc
 {
-	if (_pageImageMask) {
-		CGImageRelease(_pageImageMask);
+	if (__pageImageMask) {
+		CGImageRelease(__pageImageMask);
 	}	
 }
 
@@ -135,9 +137,9 @@ static SMPageControlStyleDefaults _defaultStyleForSystemVersion;
 
 - (void)_renderPages:(CGContextRef)context rect:(CGRect)rect
 {
-	NSMutableArray *pageRects = [NSMutableArray arrayWithCapacity:self.numberOfPages];
+	NSMutableArray *pageRects = [NSMutableArray arrayWithCapacity:__displayedNumberOfPages];
     
-	if (_numberOfPages < 2 && _hidesForSinglePage) {
+	if (__displayedNumberOfPages < 2 && _hidesForSinglePage) {
 		return;
 	}
 		
@@ -150,10 +152,10 @@ static SMPageControlStyleDefaults _defaultStyleForSystemVersion;
 	CGImageRef maskingImage = nil;
 	CGSize maskSize = CGSizeZero;
 	
-	for (NSInteger i = 0; i < _numberOfPages; i++) {
+	for (NSInteger i = 0; i < __displayedNumberOfPages; i++) {
 		NSNumber *indexNumber = @(i);
 		
-		if (i == _displayedPage) {
+		if (i == __displayedPage) {
 			fillColor = _currentPageIndicatorTintColor ? _currentPageIndicatorTintColor : [UIColor whiteColor];
 			image = _currentPageImages[indexNumber];
 			if (nil == image) {
@@ -175,7 +177,7 @@ static SMPageControlStyleDefaults _defaultStyleForSystemVersion;
 
 			// If no per page mask is set, try for a global page mask!
 			if (nil == maskingImage) {
-				maskingImage = _pageImageMask;
+				maskingImage = __pageImageMask;
 				maskSize = _pageIndicatorMaskImage.size;
 			}
 		}
@@ -184,24 +186,24 @@ static SMPageControlStyleDefaults _defaultStyleForSystemVersion;
 		CGRect indicatorRect;
 		if (image) {
 			yOffset = [self _topOffsetForHeight:image.size.height rect:rect];
-			CGFloat centeredXOffset = xOffset + floorf((_measuredIndicatorWidth - image.size.width) / 2.0f);
+			CGFloat centeredXOffset = xOffset + floorf((__measuredIndicatorWidth - image.size.width) / 2.0f);
 			[image drawAtPoint:CGPointMake(centeredXOffset, yOffset)];
             indicatorRect = CGRectMake(centeredXOffset, yOffset, image.size.width, image.size.height);
 		} else if (maskingImage) {
 			yOffset = [self _topOffsetForHeight:maskSize.height rect:rect];
-			CGFloat centeredXOffset = xOffset + floorf((_measuredIndicatorWidth - maskSize.width) / 2.0f);
+			CGFloat centeredXOffset = xOffset + floorf((__measuredIndicatorWidth - maskSize.width) / 2.0f);
 			indicatorRect = CGRectMake(centeredXOffset, yOffset, maskSize.width, maskSize.height);
 			CGContextDrawImage(context, indicatorRect, maskingImage);
 		} else {
 			yOffset = [self _topOffsetForHeight:_indicatorDiameter rect:rect];
-			CGFloat centeredXOffset = xOffset + floorf((_measuredIndicatorWidth - _indicatorDiameter) / 2.0f);
+			CGFloat centeredXOffset = xOffset + floorf((__measuredIndicatorWidth - _indicatorDiameter) / 2.0f);
             indicatorRect = CGRectMake(centeredXOffset, yOffset, _indicatorDiameter, _indicatorDiameter);
 			CGContextFillEllipseInRect(context, indicatorRect);
 		}
 		
         [pageRects addObject:[NSValue valueWithCGRect:indicatorRect]];
 		maskingImage = NULL;
-		xOffset += _measuredIndicatorWidth + _indicatorMargin;
+		xOffset += __measuredIndicatorWidth + _indicatorMargin;
 	}
 	
 	self.pageRects = pageRects;
@@ -211,7 +213,7 @@ static SMPageControlStyleDefaults _defaultStyleForSystemVersion;
 - (CGFloat)_leftOffset
 {
 	CGRect rect = self.bounds;
-	CGSize size = [self sizeForNumberOfPages:self.numberOfPages];
+	CGSize size = [self sizeForNumberOfPages:__displayedNumberOfPages];
 	CGFloat left = 0.0f;
 	switch (_alignment) {
 		case SMPageControlAlignmentCenter:
@@ -246,16 +248,34 @@ static SMPageControlStyleDefaults _defaultStyleForSystemVersion;
 
 - (void)updateCurrentPageDisplay
 {
-	_displayedPage = _currentPage;
-	[self setNeedsDisplay];
+    if (_numberOfPages <= 0) {
+        __displayedPage = 0;
+        return;
+    }
+    __displayedPage = lround(1.0 * _currentPage * __displayedNumberOfPages / _numberOfPages);
 }
 
 - (CGSize)sizeForNumberOfPages:(NSInteger)pageCount
 {
 	CGFloat marginSpace = MAX(0, pageCount - 1) * _indicatorMargin;
-	CGFloat indicatorSpace = pageCount * _measuredIndicatorWidth;
-	CGSize size = CGSizeMake(marginSpace + indicatorSpace, _measuredIndicatorHeight);
+	CGFloat indicatorSpace = pageCount * __measuredIndicatorWidth;
+	CGSize size = CGSizeMake(marginSpace + indicatorSpace, __measuredIndicatorHeight);
 	return size;
+}
+
+- (NSUInteger)maxNumberVisiblePages {
+    CGSize size = self.bounds.size;
+    if (size.height < __measuredIndicatorHeight) {
+        return 0;
+    }
+    
+    CGFloat pageWidth = __measuredIndicatorWidth + _indicatorMargin;
+    if (pageWidth <= 0) {
+        return 0;
+    }
+    
+    NSInteger maxPagesCount = (size.width + _indicatorMargin) / pageWidth;
+    return maxPagesCount;
 }
 
 - (CGRect)rectForPageIndicator:(NSInteger)pageIndex
@@ -266,13 +286,13 @@ static SMPageControlStyleDefaults _defaultStyleForSystemVersion;
 	
 	CGFloat left = [self _leftOffset];
 	CGSize size = [self sizeForNumberOfPages:pageIndex + 1];
-	CGRect rect = CGRectMake(left + size.width - _measuredIndicatorWidth, 0, _measuredIndicatorWidth, _measuredIndicatorWidth);
+	CGRect rect = CGRectMake(left + size.width - __measuredIndicatorWidth, 0, __measuredIndicatorWidth, __measuredIndicatorWidth);
 	return rect;
 }
 
 - (void)_setImage:(UIImage *)image forPage:(NSInteger)pageIndex type:(SMPageControlImageType)type
 {
-	if (pageIndex < 0 || pageIndex >= _numberOfPages) {
+	if (pageIndex < 0 || pageIndex >= __displayedNumberOfPages) {
 		return;
 	}
 	
@@ -331,7 +351,7 @@ static SMPageControlStyleDefaults _defaultStyleForSystemVersion;
 
 - (id)_imageForPage:(NSInteger)pageIndex type:(SMPageControlImageType)type
 {
-	if (pageIndex < 0 || pageIndex >= _numberOfPages) {
+	if (pageIndex < 0 || pageIndex >= __displayedNumberOfPages) {
 		return nil;
 	}
 	
@@ -370,17 +390,17 @@ static SMPageControlStyleDefaults _defaultStyleForSystemVersion;
 
 - (CGSize)sizeThatFits:(CGSize)size
 {
-	CGSize sizeThatFits = [self sizeForNumberOfPages:self.numberOfPages];
+	CGSize sizeThatFits = [self sizeForNumberOfPages:_numberOfPages];
 	sizeThatFits.height = MAX(sizeThatFits.height, _minHeight);
 	return sizeThatFits;
 }
 
 - (CGSize)intrinsicContentSize
 {
-	if (_numberOfPages < 1 || (_numberOfPages < 2 && _hidesForSinglePage)) {
+	if (__displayedNumberOfPages < 1 || (__displayedNumberOfPages < 2 && _hidesForSinglePage)) {
 		return CGSizeMake(UIViewNoIntrinsicMetric, 0.0f);
 	}
-	CGSize intrinsicContentSize = CGSizeMake(UIViewNoIntrinsicMetric, MAX(_measuredIndicatorHeight, _minHeight));
+	CGSize intrinsicContentSize = CGSizeMake(UIViewNoIntrinsicMetric, MAX(__measuredIndicatorHeight, _minHeight));
 	return intrinsicContentSize;
 }
 
@@ -436,20 +456,20 @@ static SMPageControlStyleDefaults _defaultStyleForSystemVersion;
 
 - (void)_updateMeasuredIndicatorSizeWithSize:(CGSize)size
 {
-	_measuredIndicatorWidth = MAX(_measuredIndicatorWidth, size.width);
-	_measuredIndicatorHeight = MAX(_measuredIndicatorHeight, size.height);
+	__measuredIndicatorWidth = MAX(__measuredIndicatorWidth, size.width);
+	__measuredIndicatorHeight = MAX(__measuredIndicatorHeight, size.height);
 }
 
 - (void)_updateMeasuredIndicatorSizes
 {
-	_measuredIndicatorWidth = _indicatorDiameter;
-	_measuredIndicatorHeight = _indicatorDiameter;
+	__measuredIndicatorWidth = _indicatorDiameter;
+	__measuredIndicatorHeight = _indicatorDiameter;
 	
 	// If we're only using images, ignore the _indicatorDiameter
 	if ( (self.pageIndicatorImage || self.pageIndicatorMaskImage) && self.currentPageIndicatorImage )
 	{
-		_measuredIndicatorWidth = 0;
-		_measuredIndicatorHeight = 0;
+		__measuredIndicatorWidth = 0;
+		__measuredIndicatorHeight = 0;
 	}
 	
 	if (self.pageIndicatorImage) {
@@ -499,7 +519,7 @@ static SMPageControlStyleDefaults _defaultStyleForSystemVersion;
         }
     }
     
-    CGSize size = [self sizeForNumberOfPages:self.numberOfPages];
+    CGSize size = [self sizeForNumberOfPages:__displayedNumberOfPages];
     CGFloat left = [self _leftOffset];
     CGFloat middle = left + (size.width / 2.0f);
     if (point.x < middle) {
@@ -515,6 +535,7 @@ static SMPageControlStyleDefaults _defaultStyleForSystemVersion;
 - (void)setFrame:(CGRect)frame
 {
 	[super setFrame:frame];
+    [self updateDisplayedNumberOfPages];
 	[self setNeedsDisplay];
 }
 
@@ -531,6 +552,7 @@ static SMPageControlStyleDefaults _defaultStyleForSystemVersion;
 		self.minHeight = indicatorDiameter;
 	}
 
+    [self updateDisplayedNumberOfPages];
 	[self _updateMeasuredIndicatorSizes];
 	[self setNeedsDisplay];
 }
@@ -542,6 +564,7 @@ static SMPageControlStyleDefaults _defaultStyleForSystemVersion;
 	}
 	
 	_indicatorMargin = indicatorMargin;
+    [self updateDisplayedNumberOfPages];
 	[self setNeedsDisplay];
 }
 
@@ -568,7 +591,7 @@ static SMPageControlStyleDefaults _defaultStyleForSystemVersion;
 	if (numberOfPages == _numberOfPages) {
 		return;
 	}
-	
+
 	self.accessibilityPageControl.numberOfPages = numberOfPages;
 	
 	_numberOfPages = MAX(0, numberOfPages);
@@ -576,7 +599,14 @@ static SMPageControlStyleDefaults _defaultStyleForSystemVersion;
 		[self invalidateIntrinsicContentSize];
 	}
 	[self updateAccessibilityValue];
+    
+    [self updateDisplayedNumberOfPages];
 	[self setNeedsDisplay];
+}
+
+- (void)updateDisplayedNumberOfPages {
+    #warning update displayed number of pages
+    __displayedNumberOfPages = MIN(_numberOfPages, [self maxNumberVisiblePages]);
 }
 
 - (void)setCurrentPage:(NSInteger)currentPage
@@ -585,14 +615,16 @@ static SMPageControlStyleDefaults _defaultStyleForSystemVersion;
 }
 
 - (void)setCurrentPage:(NSInteger)currentPage sendEvent:(BOOL)sendEvent canDefer:(BOOL)defer
-{	
+{
 	_currentPage = MIN(MAX(0, currentPage), _numberOfPages - 1);
+//    __displayedCurrentPage = lround(1.0 * _currentPage * __maxDisplayedPages / _numberOfPages);
+    [self updateCurrentPageDisplay];
+    
 	self.accessibilityPageControl.currentPage = self.currentPage;
 	
 	[self updateAccessibilityValue];
 	
 	if (NO == self.defersCurrentPageDisplay || NO == defer) {
-		_displayedPage = _currentPage;
 		[self setNeedsDisplay];
 	}
 	
@@ -631,11 +663,11 @@ static SMPageControlStyleDefaults _defaultStyleForSystemVersion;
 	
 	_pageIndicatorMaskImage = pageIndicatorMaskImage;
 	
-	if (_pageImageMask) {
-		CGImageRelease(_pageImageMask);
+	if (__pageImageMask) {
+		CGImageRelease(__pageImageMask);
 	}
 	
-	_pageImageMask = [self createMaskForImage:_pageIndicatorMaskImage];
+	__pageImageMask = [self createMaskForImage:_pageIndicatorMaskImage];
 	
 	[self _updateMeasuredIndicatorSizes];
 	[self setNeedsDisplay];
@@ -725,3 +757,4 @@ static SMPageControlStyleDefaults _defaultStyleForSystemVersion;
 }
 
 @end
+
