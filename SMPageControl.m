@@ -605,7 +605,6 @@ static SMPageControlStyleDefaults _defaultStyleForSystemVersion;
 }
 
 - (void)updateDisplayedNumberOfPages {
-    #warning update displayed number of pages
     __displayedNumberOfPages = MIN(_numberOfPages, [self maxNumberVisiblePages]);
 }
 
